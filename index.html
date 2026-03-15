@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CardioProtect DSS v2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#080c14;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh}
+select{background:#0f1520;color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:10px 14px;width:100%;font-size:13px;outline:none;appearance:none;-webkit-appearance:none;margin-bottom:4px}
+input[type=range]{width:100%;margin:4px 0 2px}
+button{cursor:pointer;font-family:inherit;border:none}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:#333;border-radius:2px}
+.card{padding:16px;border-radius:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);margin-bottom:16px}
+.sh{font-size:10px;color:rgba(255,255,255,0.28);text-transform:uppercase;letter-spacing:.12em;margin-bottom:14px}
+.lbl{font-size:11px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px;margin-top:10px}
+.tabs{display:flex;margin:0 0 16px;border-radius:10px;background:rgba(255,255,255,0.05);padding:4px}
+.tab{flex:1;padding:9px;border-radius:8px;border:none;font-size:13px;font-weight:600;background:transparent;color:rgba(255,255,255,0.38);transition:all .3s}
+.tab.on{background:rgba(255,255,255,0.12);color:#fff}
+.runbtn{width:100%;padding:16px;border-radius:12px;background:linear-gradient(135deg,#2a7fe0,#2ac47f);color:#fff;font-size:15px;font-weight:700;box-shadow:0 4px 30px rgba(42,127,224,0.4);margin-top:4px}
+.chip{padding:6px 13px;border-radius:20px;font-size:11px;font-weight:500;background:transparent}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:#0f1117;border-radius:16px;padding:20px;max-width:500px;width:100%;max-height:88vh;overflow-y:auto}
+.chk{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;user-select:none;color:rgba(255,255,255,0.5)}
+.chk.on{color:#fff}
+.rline{font-size:12px;color:rgba(255,255,255,0.45);margin-bottom:4px;padding-left:12px;border-left:2px solid rgba(255,255,255,0.15);display:block}
+</style>
+</head>
+<body>
+<div id="root" style="max-width:520px;margin:0 auto;padding:0 20px"></div>
+
+<script>
+// ── PROTOCOLS ──────────────────────────────────────────────────────────────
+var P = {
+  calafiore:{
+    label:"Calafiore (тёплая кровяная)",color:"#e05c2a",icon:"🩸",
+    comp:[
+      ["Основа","Аутологичная кровь 4:1"],["KCl индукция","20 мэкв/л"],
+      ["KCl поддержание","8 мэкв/л"],["NaHCO₃","по BE"],
+      ["Температура","37°C или 29–32°C"],["Осмолярность","~340 мОсм/кг"]
+    ],
+    dos:[
+      ["Индукция","10–15 мл/кг","80–100 мм рт.ст., до остановки"],
+      ["Редозирование","5–10 мл/кг","каждые 20–25 мин"],
+      ["Реперфузия","2–4 мл/кг","тёплая, без K+"]
+    ],
+    adv:["Физиологичная оксигенация","Гибкость дозирования","Нет гемодилюции","Идеален при нормотермии"],
+    lim:["Частые редозы при длительных операциях","Нагрузка K+ при ХБП","Технически сложнее"]
+  },
+  delNido:{
+    label:"Del Nido",color:"#2a7fe0",icon:"💎",
+    comp:[
+      ["Плазмалит A","1000 мл"],["Кровь","250 мл (4:1)"],
+      ["MgSO₄","2 г"],["Lidocaine","130 мг"],
+      ["KCl","2 мэкв"],["NaHCO₃","13 мэкв"],
+      ["Mannitol","3,26 г"],["Температура","4–8°C"]
+    ],
+    dos:[
+      ["Единственная доза","20 мл/кг (max 1000 мл)","200–250 мм рт.ст., 3–5 мин"],
+      ["Редоз >90 мин","10 мл/кг","50% от первичной дозы"]
+    ],
+    adv:["Одна доза на 90–120 мин","Лидокаин: стабилизация мембраны","Магний: антагонист Ca²+","Идеален при педиатрии и АВР"],
+    lim:["Ограниченный опыт >120 мин","Не для нормотермии","Объём 1000 мл — нагрузка"]
+  },
+  custodiol:{
+    label:"Кустодиол (HTK)",color:"#2ac47f",icon:"🧬",
+    comp:[
+      ["Гистидин","198 ммоль/л"],["Триптофан","2 ммоль/л"],
+      ["Кетоглутарат","1 ммоль/л"],["Mannitol","30 ммоль/л"],
+      ["KCl","9 мэкв/л"],["MgCl₂","4 ммоль/л"],
+      ["Температура","4–6°C"]
+    ],
+    dos:[
+      ["Взрослые","20–30 мл/кг (мин. 1000 мл)","30–50 мм рт.ст., 6–8 мин"],
+      ["Повторная защита >180 мин","500–1000 мл","при необходимости"]
+    ],
+    adv:["Защита до 3–4 ч без редозов","Стандарт при аортальной хирургии","Надёжен при ретроградном введении"],
+    lim:["Большой объём → гемодилюция","Не для нормотермии","Нет O₂-доставки"]
+  }
+};
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+var S = {
+  tab:"input", modal:null, result:null,
+  f:{op:"cabg",ef:55,lvm:"none",isch:60,ar:"none",gfr:75,temp:"mild",dm:false,mi:false,ped:false}
+};
+
+// ── SCORE ──────────────────────────────────────────────────────────────────
+function score(f) {
+  var s={calafiore:0,delNido:0,custodiol:0};
+  var r={calafiore:[],delNido:[],custodiol:[]};
+  var w=[]; var ci={calafiore:[],delNido:[],custodiol:[]};
+
+  function add(k,n,t){s[k]+=n;r[k].push(t);}
+  function sub(k,n,t){s[k]=Math.max(0,s[k]-n);r[k].push(t);}
+  function con(k,t){ci[k].push(t);}
+  function warn(t){w.push(t);}
+
+  // Операция
+  if(f.op==="cabg"){add("calafiore",3,"АКШ: частые редозы совместимы с многососудистым шунтированием");add("delNido",2,"АКШ: DN применим, контроль DO₂");add("custodiol",1,"АКШ: Кустодиол возможен, редозирование затруднено");}
+  else if(f.op==="avr"){add("delNido",3,"АВР: DN оптимален — одна доза, отличный доступ");add("custodiol",3,"АВР: Кустодиол — стандарт при изолированной патологии АК");add("calafiore",1,"АВР: Calafiore применим при сочетанной патологии");}
+  else if(f.op==="mvr"){add("calafiore",2,"МВР: Calafiore — гибкость при длительных операциях");add("delNido",2,"МВР: DN при умеренной продолжительности");add("custodiol",2,"МВР: Кустодиол при изолированной патологии МК");}
+  else if(f.op==="combined"){add("calafiore",3,"Сочетанная: Calafiore — гибкое управление ишемией");add("delNido",1,"Сочетанная: DN — риск при >120 мин");add("custodiol",1,"Сочетанная: Кустодиол — однократность ограничивает гибкость");}
+  else if(f.op==="aorta"){add("custodiol",4,"Хирургия аорты: Кустодиол — золотой стандарт");add("delNido",2,"Хирургия аорты: DN при умеренной продолжительности");con("calafiore","Хирургия аорты: антеградная доставка технически затруднена");}
+  else if(f.op==="redo"){add("custodiol",3,"Повторная: Кустодиол — ретроградное введение надёжно при спайках");add("calafiore",2,"Повторная: Calafiore — ретроградный путь");add("delNido",1,"Повторная: DN — ограниченный опыт");}
+
+  // ФВ
+  if(f.ef<30){add("delNido",3,"ФВ <30%: DN — лидокаин+магний, защита гибернированного миокарда");add("custodiol",2,"ФВ <30%: Кустодиол — гипотермическая защита");add("calafiore",1,"ФВ <30%: Calafiore — тщательный контроль редозирования");warn("⚠️ Критическая дисфункция ЛЖ: рассмотреть ВАБК, мониторинг лактата");}
+  else if(f.ef<45){add("delNido",2,"ФВ 30–45%: DN надёжен при умеренной дисфункции");add("calafiore",1,"ФВ 30–45%: Calafiore при частом редозировании");add("custodiol",1,"ФВ 30–45%: Кустодиол приемлем");}
+  else{add("calafiore",2,"ФВ ≥45%: Calafiore — оптимально при сохранной функции");add("delNido",1,"ФВ ≥45%: DN применим");add("custodiol",1,"ФВ ≥45%: Кустодиол применим");}
+
+  // ГЛЖ
+  if(f.lvm==="severe"){add("delNido",3,"Выраженная ГЛЖ: DN — лидокаин критически важен");add("custodiol",2,"Выраженная ГЛЖ: Кустодиол — глубокая гипотермия");add("calafiore",1,"Выраженная ГЛЖ: Calafiore — интервалы 15–20 мин");warn("⚠️ ГЛЖ >200 г/м²: увеличить объём кардиоплегии");}
+  else if(f.lvm==="moderate"){add("delNido",2,"Умеренная ГЛЖ: DN предпочтителен");add("calafiore",1,"Умеренная ГЛЖ: Calafiore с укороченными интервалами");add("custodiol",1,"Умеренная ГЛЖ: Кустодиол применим");}
+  else{add("calafiore",1,"Норма ГЛЖ: стандартный Calafiore");add("delNido",1,"Норма ГЛЖ: DN применим");add("custodiol",1,"Норма ГЛЖ: Кустодиол применим");}
+
+  // Ишемия
+  if(f.isch>120){add("custodiol",4,"Ишемия >120 мин: Кустодиол — защита до 3–4 ч");add("delNido",2,"Ишемия >120 мин: DN — второй болюс при контроле");sub("calafiore",1,"Ишемия >120 мин: Calafiore — высокая нагрузка Na");warn("⚠️ Длительная ишемия: контроль Hct, DO₂, температуры перфузата");}
+  else if(f.isch>80){add("custodiol",2,"Ишемия 80–120 мин: Кустодиол комфортен");add("delNido",2,"Ишемия 80–120 мин: DN — одна доза покрывает");add("calafiore",1,"Ишемия 80–120 мин: Calafiore — 2–3 редоза");}
+  else{add("calafiore",2,"Ишемия <80 мин: Calafiore — 1–2 редоза оптимально");add("delNido",2,"Ишемия <80 мин: DN — одна доза достаточна");add("custodiol",1,"Ишемия <80 мин: Кустодиол избыточен по объёму");}
+
+  // АР
+  if(f.ar==="severe"){add("custodiol",3,"АР 3–4 ст.: Кустодиол — ретроградная перфузия");add("delNido",2,"АР 3–4 ст.: DN — прямая канюляция устьев");con("calafiore","АР 3–4 ст.: антеградное введение неэффективно — вымывание в ЛЖ");warn("⚠️ Тяжёлая АР: антеградный путь не рекомендован");}
+  else if(f.ar==="moderate"){add("custodiol",1,"АР 2 ст.: предпочтителен ретроградный путь");add("delNido",1,"АР 2 ст.: DN с осторожностью антеградно");add("calafiore",1,"АР 2 ст.: Calafiore с ретроградным компонентом");}
+  else{add("calafiore",1,"АР нет/1 ст.: антеградный путь надёжен");add("delNido",1,"АР нет/1 ст.: стандартное DN антеградно");add("custodiol",1,"АР нет/1 ст.: Кустодиол антеградно");}
+
+  // СКФ
+  if(f.gfr<30){sub("calafiore",2,"СКФ <30: высокая нагрузка K+ при редозах — риск гиперкалиемии");add("custodiol",1,"СКФ <30: Кустодиол — однократный болюс");add("delNido",1,"СКФ <30: DN — однократный болюс");warn("⚠️ ХБП 4–5: K+ каждые 30 мин на ИК, готовность к ультрафильтрации");}
+  else if(f.gfr<60){sub("calafiore",1,"СКФ 30–60: Calafiore — контроль K+");warn("⚠️ ХБП 3: контроль электролитов");}
+
+  if(f.dm){add("delNido",1,"СД: DN — нет глюкозы в составе");add("custodiol",1,"СД: Кустодиол — гистидиновый буфер");warn("⚠️ СД: гликемия 6–10 ммоль/л на ИК");}
+  if(f.mi){add("delNido",2,"Постинфарктный: DN — лидокаин стабилизирует зону некроза");add("calafiore",1,"Постинфарктный: Calafiore — непрерывная защита");warn("⚠️ Постинфарктный кардиосклероз: рассмотреть комбинированный путь доставки");}
+  if(f.ped){add("delNido",4,"Педиатрия: Del Nido — разработан специально для детской КХ");con("calafiore","Педиатрия: Calafiore не валидирован");add("custodiol",1,"Педиатрия: Кустодиол применим, DN предпочтительнее");warn("⚠️ Педиатрия: DN 20 мл/кг, температура перфузата 4°C");}
+
+  if(f.temp==="norm"){add("calafiore",2,"Нормотермия: Calafiore — тёплые редозы каждые 15–20 мин");sub("delNido",1,"Нормотермия: DN менее оптимален");con("custodiol","Нормотермия: Кустодиол не предназначен для нормотермии");}
+  else if(f.temp==="mild"){add("calafiore",1,"Умеренная гипотермия: Calafiore комфортен");add("delNido",1,"Умеренная гипотермия: DN приемлем");add("custodiol",1,"Умеренная гипотермия: Кустодиол субоптимален");}
+  else{add("custodiol",2,"Глубокая гипотермия: Кустодиол — максимальная защита");add("delNido",1,"Глубокая гипотермия: DN совместим");}
+
+  var total=s.calafiore+s.delNido+s.custodiol||1;
+  var pct={};
+  Object.keys(s).forEach(function(k){pct[k]=Math.round(s[k]/total*100);});
+  var winner=Object.keys(s).sort(function(a,b){return s[b]-s[a];})[0];
+  return{s:s,pct:pct,r:r,w:w,ci:ci,winner:winner};
+}
+
+// ── DOM HELPERS ────────────────────────────────────────────────────────────
+function el(tag,attrs,kids){
+  var e=document.createElement(tag);
+  if(attrs){
+    Object.keys(attrs).forEach(function(k){
+      var v=attrs[k];
+      if(k==="style"&&typeof v==="object"){Object.assign(e.style,v);}
+      else if(k==="cls"){e.className=v;}
+      else if(k.slice(0,2)==="on"){e.addEventListener(k.slice(2),v);}
+      else{e.setAttribute(k,v);}
+    });
+  }
+  if(kids){
+    (Array.isArray(kids)?kids:[kids]).forEach(function(c){
+      if(c==null||c===false||c===undefined)return;
+      if(typeof c==="string"){e.appendChild(document.createTextNode(c));}
+      else{e.appendChild(c);}
+    });
+  }
+  return e;
+}
+function ht(html){var d=document.createElement("div");d.innerHTML=html;return d;}
+function tx(html){var s=document.createElement("span");s.innerHTML=html;return s;}
+
+// ── RENDER ──────────────────────────────────────────────────────────────────
+function render(){
+  var root=document.getElementById("root");
+  while(root.firstChild)root.removeChild(root.firstChild);
+
+  // Header
+  root.appendChild(el("div",{style:{paddingTop:"26px",textAlign:"center"}},[
+    ht("<p style='font-size:9px;letter-spacing:.32em;color:rgba(255,255,255,.28);text-transform:uppercase;margin-bottom:7px'>ОКБ №1 · Тюмень · Перфузиология</p>"),
+    ht("<p style='font-size:22px;font-weight:800;background:linear-gradient(135deg,#e05c2a,#2a7fe0,#2ac47f);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px'>CardioProtect DSS v2</p>"),
+    ht("<p style='font-size:12px;color:rgba(255,255,255,.3);margin-bottom:0'>Система поддержки выбора кардиоплегии</p>")
+  ]));
+
+  // Chips
+  var chips=el("div",{style:{display:"flex",gap:"8px",padding:"14px 0",justifyContent:"center",flexWrap:"wrap"}});
+  Object.keys(P).forEach(function(k){
+    var pr=P[k];
+    var lbl=k==="delNido"?"Del Nido":k==="calafiore"?"Calafiore":"Кустодиол";
+    var b=el("button",{cls:"chip",style:{borderColor:pr.color+"55",color:pr.color,border:"1px solid "+pr.color+"55"},onclick:function(){S.modal=k;render();}},pr.icon+" "+lbl+" →");
+    chips.appendChild(b);
+  });
+  root.appendChild(chips);
+
+  // Tabs
+  var tabs=el("div",{cls:"tabs"});
+  [["input","⚙️ Параметры"],["result","📊 Результат"]].forEach(function(pair){
+    var t=pair[0],lbl=pair[1];
+    var b=el("button",{cls:"tab"+(S.tab===t?" on":""),onclick:function(){S.tab=t;render();}},lbl);
+    tabs.appendChild(b);
+  });
+  root.appendChild(tabs);
+
+  // Content
+  if(S.tab==="input"){root.appendChild(renderInput());}
+  else{root.appendChild(renderResult());}
+
+  // Footer
+  root.appendChild(ht("<p style='font-size:9px;color:rgba(255,255,255,.18);text-align:center;padding:16px 0 24px'>CardioProtect DSS v2 · Только для поддержки клинических решений</p>"));
+
+  // Modal
+  if(S.modal){root.appendChild(renderModal(S.modal));}
+}
+
+function renderInput(){
+  var f=S.f;
+  var wrap=el("div");
+
+  function sect(title,kids){
+    var d=el("div",{cls:"card"});
+    d.appendChild(ht("<div class='sh'>"+title+"</div>"));
+    kids.forEach(function(k){d.appendChild(k);});
+    wrap.appendChild(d);
+  }
+  function lbl(html){return ht("<label class='lbl'>"+html+"</label>");}
+  function selEl(opts,val,key){
+    var s=document.createElement("select");
+    opts.forEach(function(o){
+      var opt=document.createElement("option");
+      opt.value=o[0];opt.textContent=o[1];
+      if(o[0]===val)opt.selected=true;
+      s.appendChild(opt);
+    });
+    s.addEventListener("change",function(){S.f[key]=s.value;render();});
+    return s;
+  }
+  function range(min,max,step,val,key,col){
+    var inp=document.createElement("input");
+    inp.type="range";inp.min=min;inp.max=max;inp.step=step||1;inp.value=val;
+    inp.style.accentColor=col;
+    inp.addEventListener("input",function(){S.f[key]=+inp.value;render();});
+    return inp;
+  }
+
+  var efCol=f.ef<30?"#e05c2a":f.ef<45?"#f0b429":"#2ac47f";
+  var iCol=f.isch>120?"#e05c2a":f.isch>80?"#f0b429":"#2ac47f";
+  var gCol=f.gfr<30?"#e05c2a":f.gfr<60?"#f0b429":"#2ac47f";
+
+  sect("Тип операции",[
+    selEl([["cabg","АКШ (изолированное)"],["avr","Протезирование аортального клапана"],["mvr","Пластика/протезирование митрального клапана"],["combined","Сочетанная (АКШ + клапан)"],["aorta","Хирургия аорты"],["redo","Повторная операция (redo)"]],f.op,"op")
+  ]);
+
+  sect("Функция левого желудочка",[
+    lbl("ФВ ЛЖ: <b style='color:"+efCol+"'>"+f.ef+"%</b>"),
+    range(10,75,1,f.ef,"ef",efCol),
+    ht("<div style='display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,.25);margin-bottom:8px'><span>10% крит.</span><span>45% норма</span><span>75%</span></div>"),
+    lbl("Гипертрофия ЛЖ"),
+    selEl([["none","Нет / минимальная"],["moderate","Умеренная (115–150 г/м²)"],["severe","Выраженная (>150 г/м²)"]],f.lvm,"lvm")
+  ]);
+
+  sect("Клапанная патология",[
+    lbl("Аортальная регургитация"),
+    selEl([["none","Нет / 1 ст."],["moderate","2 ст. (умеренная)"],["severe","3–4 ст. (тяжёлая)"]],f.ar,"ar")
+  ]);
+
+  sect("Параметры перфузии",[
+    lbl("Время ишемии аорты: <b style='color:"+iCol+"'>"+f.isch+" мин</b>"),
+    range(20,240,5,f.isch,"isch",iCol),
+    ht("<div style='display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,.25);margin-bottom:8px'><span>20 мин</span><span>80</span><span>120</span><span>240</span></div>"),
+    lbl("Температурный режим ИК"),
+    selEl([["norm","Нормотермия (36–37°C)"],["mild","Умеренная гипотермия (32–34°C)"],["moderate","Гипотермия (28–32°C)"],["deep","Глубокая гипотермия (<28°C)"]],f.temp,"temp")
+  ]);
+
+  sect("Сопутствующая патология",[
+    lbl("СКФ: <b style='color:"+gCol+"'>"+f.gfr+" мл/мин/1.73м²</b>"),
+    range(10,120,1,f.gfr,"gfr",gCol),
+    ht("<div style='display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,.25);margin-bottom:12px'><span>ХБП 5</span><span>ХБП 3</span><span>Норма</span></div>"),
+    (function(){
+      var checks=el("div",{style:{display:"flex",gap:"16px",flexWrap:"wrap"}});
+      [["dm","🍬 СД"],["mi","❤️ Перенесённый ИМ"],["ped","👶 Педиатрия"]].forEach(function(pair){
+        var key=pair[0],lbl2=pair[1];
+        var lab=el("label",{cls:"chk"+(f[key]?" on":"")});
+        var cb=document.createElement("input");
+        cb.type="checkbox";cb.checked=f[key];
+        cb.style.accentColor="#2a7fe0";cb.style.width="16px";cb.style.height="16px";
+        cb.addEventListener("change",function(){S.f[key]=cb.checked;render();});
+        lab.appendChild(cb);
+        lab.appendChild(document.createTextNode(" "+lbl2));
+        checks.appendChild(lab);
+      });
+      return checks;
+    })()
+  ]);
+
+  wrap.appendChild(el("button",{cls:"runbtn",onclick:function(){S.result=score(S.f);S.tab="result";render();}},"⚡ Рассчитать рекомендацию"));
+  return wrap;
+}
+
+function renderResult(){
+  if(!S.result){
+    return el("div",{style:{textAlign:"center",padding:"60px 0",color:"rgba(255,255,255,.25)"}},[
+      ht("<div style='font-size:48px'>🫀</div>"),
+      ht("<div style='font-size:14px;margin-top:12px'>Введите параметры и нажмите «Рассчитать»</div>")
+    ]);
+  }
+  var res=S.result;
+  var wk=res.winner;
+  var wp=P[wk];
+  var wrap=el("div");
+
+  // Winner
+  var wc=el("div",{style:{padding:"20px",borderRadius:"14px",marginBottom:"18px",background:"linear-gradient(135deg,"+wp.color+"22,"+wp.color+"11)",border:"1.5px solid "+wp.color+"66",boxShadow:"0 0 40px "+wp.color+"33"}});
+  wc.appendChild(ht("<div style='font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.15em;margin-bottom:8px'>Рекомендованный метод</div>"));
+  wc.appendChild(ht("<div style='font-size:21px;font-weight:800;color:"+wp.color+";margin-bottom:4px'>"+wp.icon+" "+wp.label+"</div>"));
+  wc.appendChild(ht("<div style='font-size:13px;color:rgba(255,255,255,.45);margin-bottom:14px'>Индекс предпочтения: "+res.pct[wk]+"% · "+res.s[wk]+" баллов</div>"));
+  wc.appendChild(el("button",{style:{padding:"8px 16px",borderRadius:"8px",border:"1px solid "+wp.color+"66",background:wp.color+"22",color:wp.color,fontSize:"12px",fontWeight:"600"},onclick:function(){S.modal=wk;render();}},"Протокол дозирования →"));
+  wrap.appendChild(wc);
+
+  // Bars
+  Object.keys(P).forEach(function(k){
+    var pr=P[k],aw=k===wk;
+    var bar=el("div",{style:{padding:"14px 16px",borderRadius:"12px",marginBottom:"10px",background:aw?"linear-gradient(135deg,"+pr.color+"22,"+pr.color+"11)":"rgba(255,255,255,.03)",border:"1px solid "+(aw?pr.color+"88":"rgba(255,255,255,.08)"),boxShadow:aw?"0 0 18px "+pr.color+"33":"none"}});
+    var row=el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}});
+    row.appendChild(ht("<span style='color:"+(aw?pr.color:"rgba(255,255,255,.6)")+";font-weight:"+(aw?"700":"400")+";font-size:13px'>"+pr.icon+" "+pr.label+"</span>"));
+    row.appendChild(ht("<span style='color:"+pr.color+";font-weight:700;font-size:18px'>"+res.pct[k]+"%</span>"));
+    bar.appendChild(row);
+    var track=el("div",{style:{height:"6px",background:"rgba(255,255,255,.08)",borderRadius:"3px",overflow:"hidden"}});
+    var fill=el("div",{style:{width:res.pct[k]+"%",height:"100%",borderRadius:"3px",background:"linear-gradient(90deg,"+pr.color+"aa,"+pr.color+")"}});
+    track.appendChild(fill);bar.appendChild(track);
+    wrap.appendChild(bar);
+  });
+
+  // Warnings
+  if(res.w.length){
+    var wb=el("div",{style:{marginBottom:"16px",padding:"16px",borderRadius:"12px",background:"rgba(240,180,41,.07)",border:"1px solid rgba(240,180,41,.3)"}});
+    wb.appendChild(ht("<div style='font-size:10px;color:#f0b429;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px'>Клинические предупреждения</div>"));
+    res.w.forEach(function(ww){wb.appendChild(ht("<div style='font-size:13px;color:rgba(255,255,255,.7);margin-bottom:5px'>"+ww+"</div>"));});
+    wrap.appendChild(wb);
+  }
+
+  // Contraindications
+  var hasCI=Object.keys(res.ci).some(function(k){return res.ci[k].length>0;});
+  if(hasCI){
+    var cb=el("div",{style:{marginBottom:"16px",padding:"16px",borderRadius:"12px",background:"rgba(224,92,42,.07)",border:"1px solid rgba(224,92,42,.3)"}});
+    cb.appendChild(ht("<div style='font-size:10px;color:#e05c2a;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px'>Ограничения / Противопоказания</div>"));
+    Object.keys(res.ci).forEach(function(k){
+      res.ci[k].forEach(function(c){
+        cb.appendChild(ht("<div style='font-size:13px;color:rgba(255,255,255,.65);margin-bottom:5px'><span style=\"color:"+P[k].color+"\">"+P[k].icon+"</span> "+c+"</div>"));
+      });
+    });
+    wrap.appendChild(cb);
+  }
+
+  // Reasons
+  var rb=el("div",{style:{borderRadius:"12px",overflow:"hidden",border:"1px solid rgba(255,255,255,.07)",marginBottom:"16px"}});
+  rb.appendChild(ht("<div style='padding:12px 16px;background:rgba(255,255,255,.04);font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.1em'>Обоснование по методам</div>"));
+  Object.keys(P).forEach(function(k){
+    var pr=P[k];
+    var sec=el("div",{style:{borderTop:"1px solid rgba(255,255,255,.05)",padding:"12px 16px"}});
+    sec.appendChild(ht("<div style='color:"+pr.color+";font-weight:600;font-size:12px;margin-bottom:7px'>"+pr.icon+" "+pr.label+" ("+res.s[k]+" б.)</div>"));
+    res.r[k].forEach(function(reason){
+      sec.appendChild(ht("<span class='rline' style='border-left-color:"+pr.color+"44'>"+reason+"</span>"));
+    });
+    rb.appendChild(sec);
+  });
+  wrap.appendChild(rb);
+
+  wrap.appendChild(el("button",{style:{width:"100%",padding:"12px",borderRadius:"10px",border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.55)",fontSize:"13px"},onclick:function(){S.result=null;S.tab="input";render();}},"← Новый расчёт"));
+  return wrap;
+}
+
+function renderModal(key){
+  var pr=P[key];
+  var ov=el("div",{cls:"overlay",onclick:function(){S.modal=null;render();}});
+  var box=el("div",{cls:"modal",style:{border:"1px solid "+pr.color+"44"}});
+  box.addEventListener("click",function(e){e.stopPropagation();});
+
+  box.appendChild(ht("<div style='font-size:18px;font-weight:700;color:"+pr.color+";margin-bottom:18px'>"+pr.icon+" "+pr.label+"</div>"));
+  box.appendChild(ht("<div style='font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px'>Состав раствора</div>"));
+  pr.comp.forEach(function(c){
+    box.appendChild(ht("<div style='display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px'><span style='color:rgba(255,255,255,.45)'>"+c[0]+"</span><span style='color:#fff;font-weight:500'>"+c[1]+"</span></div>"));
+  });
+  box.appendChild(ht("<div style='font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.1em;margin-top:16px;margin-bottom:8px'>Дозирование</div>"));
+  pr.dos.forEach(function(d){
+    box.appendChild(ht("<div style='padding:10px 12px;margin-bottom:8px;border-radius:8px;background:"+pr.color+"11;border:1px solid "+pr.color+"33'><div style='color:"+pr.color+";font-weight:600;font-size:12px;margin-bottom:4px'>"+d[0]+"</div><div style='font-size:13px;color:#fff'>Доза: <b>"+d[1]+"</b></div><div style='font-size:12px;color:rgba(255,255,255,.5)'>"+d[2]+"</div></div>"));
+  });
+  var grid=el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginTop:"4px"}});
+  var advD=el("div");
+  advD.appendChild(ht("<div style='font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;margin-bottom:8px'>✅ Преимущества</div>"));
+  pr.adv.forEach(function(a){advD.appendChild(ht("<div style='font-size:12px;color:rgba(255,255,255,.65);margin-bottom:4px'>• "+a+"</div>"));});
+  var limD=el("div");
+  limD.appendChild(ht("<div style='font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;margin-bottom:8px'>⚠️ Ограничения</div>"));
+  pr.lim.forEach(function(l){limD.appendChild(ht("<div style='font-size:12px;color:rgba(255,255,255,.45);margin-bottom:4px'>• "+l+"</div>"));});
+  grid.appendChild(advD);grid.appendChild(limD);
+  box.appendChild(grid);
+  box.appendChild(el("button",{style:{marginTop:"18px",width:"100%",padding:"10px",borderRadius:"8px",background:pr.color+"33",color:pr.color,fontWeight:"600",fontSize:"13px"},onclick:function(){S.modal=null;render();}},"Закрыть"));
+  ov.appendChild(box);
+  return ov;
+}
+
+// ── START ──────────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>

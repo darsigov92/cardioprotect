@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CardioProtect DSS v2 — ОКБ №1 Тюмень</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080c14; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; }
+  select, input[type=range] { font-family: inherit; }
+  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #0f1117; } ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+
+function calcScore(f) {
+  const scores = { calafiore: 0, delNido: 0, custodiol: 0 };
+  const reasons = { calafiore: [], delNido: [], custodiol: [] };
+  const warnings = [];
+  const contraindications = { calafiore: [], delNido: [], custodiol: [] };
+
+  if (f.opType === "cabg") {
+    scores.calafiore += 3; reasons.calafiore.push("АКШ: частые редозы совместимы с многососудистым шунтированием");
+    scores.delNido += 2; reasons.delNido.push("АКШ: DN применим, но требует контроля DO₂ при длительной ишемии");
+    scores.custodiol += 1; reasons.custodiol.push("АКШ: Кустодиол возможен, но редозирование затруднено");
+  } else if (f.opType === "avr") {
+    scores.delNido += 3; reasons.delNido.push("Протезирование АК: DN оптимален — одна доза, отличный доступ");
+    scores.custodiol += 3; reasons.custodiol.push("Протезирование АК: Кустодиол — стандарт при изолированной патологии АК");
+    scores.calafiore += 1; reasons.calafiore.push("Протезирование АК: Calafiore применим при сочетанной патологии");
+  } else if (f.opType === "mvr") {
+    scores.calafiore += 2; reasons.calafiore.push("Митральная хирургия: Calafiore — гибкость при длительных операциях");
+    scores.delNido += 2; reasons.delNido.push("Митральная хирургия: DN подходит при умеренной продолжительности");
+    scores.custodiol += 2; reasons.custodiol.push("Митральная хирургия: Кустодиол при изолированной патологии МК");
+  } else if (f.opType === "combined") {
+    scores.calafiore += 3; reasons.calafiore.push("Сочетанная операция: Calafiore оптимален — гибкое управление ишемией");
+    scores.delNido += 1; reasons.delNido.push("Сочетанная операция: DN — риск неадекватной защиты при >120 мин");
+    scores.custodiol += 1; reasons.custodiol.push("Сочетанная операция: Кустодиол — однократное введение ограничивает гибкость");
+  } else if (f.opType === "aorta") {
+    scores.custodiol += 4; reasons.custodiol.push("Аортальная хирургия: Кустодиол — золотой стандарт при длительной ишемии");
+    scores.delNido += 2; reasons.delNido.push("Аортальная хирургия: DN применим при умеренной продолжительности");
+    contraindications.calafiore.push("Аортальная хирургия: антеградная доставка технически затруднена");
+  } else if (f.opType === "redo") {
+    scores.custodiol += 3; reasons.custodiol.push("Повторная операция: Кустодиол — ретроградное введение надёжно при спайках");
+    scores.calafiore += 2; reasons.calafiore.push("Повторная операция: Calafiore — ретроградный путь при технических трудностях");
+    scores.delNido += 1; reasons.delNido.push("Повторная операция: DN — ограниченный опыт при повторных вмешательствах");
+  }
+
+  if (f.ef < 30) {
+    scores.delNido += 3; reasons.delNido.push("ФВ <30%: DN содержит лидокаин и магний — мощная защита гибернированного миокарда");
+    scores.custodiol += 2; reasons.custodiol.push("ФВ <30%: Кустодиол — гипотермическая защита при тяжёлой дисфункции");
+    scores.calafiore += 1; reasons.calafiore.push("ФВ <30%: Calafiore требует тщательного контроля редозирования");
+    warnings.push("⚠️ Критическая дисфункция ЛЖ: рассмотреть преднагрузку ВАБК, мониторинг лактата");
+  } else if (f.ef < 45) {
+    scores.delNido += 2; reasons.delNido.push("ФВ 30–45%: DN — надёжная защита при умеренной дисфункции");
+    scores.calafiore += 1; reasons.calafiore.push("ФВ 30–45%: Calafiore применим при частом редозировании");
+    scores.custodiol += 1; reasons.custodiol.push("ФВ 30–45%: Кустодиол — приемлемо");
+  } else {
+    scores.calafiore += 2; reasons.calafiore.push("ФВ ≥45%: Calafiore — оптимально при сохранной функции");
+    scores.delNido += 1; reasons.delNido.push("ФВ ≥45%: DN применим");
+    scores.custodiol += 1; reasons.custodiol.push("ФВ ≥45%: Кустодиол применим");
+  }
+
+  if (f.lvm === "severe") {
+    scores.delNido += 3; reasons.delNido.push("Выраженная ГЛЖ: DN — лидокаин критически важен для защиты гипертрофированного миокарда");
+    scores.custodiol += 2; reasons.custodiol.push("Выраженная ГЛЖ: Кустодиол — глубокая гипотермия защищает при высокой массе миокарда");
+    scores.calafiore += 1; reasons.calafiore.push("Выраженная ГЛЖ: Calafiore — сокращение интервалов редозирования до 15–20 мин");
+    warnings.push("⚠️ ГЛЖ >200 г/м²: увеличить объём кардиоплегии, контроль равномерного распределения");
+  } else if (f.lvm === "moderate") {
+    scores.delNido += 2; reasons.delNido.push("Умеренная ГЛЖ: DN предпочтителен");
+    scores.calafiore += 1; reasons.calafiore.push("Умеренная ГЛЖ: Calafiore с укороченными интервалами");
+    scores.custodiol += 1; reasons.custodiol.push("Умеренная ГЛЖ: Кустодиол применим");
+  } else {
+    scores.calafiore += 1; reasons.calafiore.push("Норма/минимальная ГЛЖ: стандартный подход Calafiore");
+    scores.delNido += 1; reasons.delNido.push("Норма/минимальная ГЛЖ: DN применим");
+    scores.custodiol += 1; reasons.custodiol.push("Норма/минимальная ГЛЖ: Кустодиол применим");
+  }
+
+  if (f.ischemiaTime > 120) {
+    scores.custodiol += 4; reasons.custodiol.push("Ишемия >120 мин: Кустодиол — защита до 3–4 ч без редозирования");
+    scores.delNido += 2; reasons.delNido.push("Ишемия >120 мин: DN — возможен второй болюс при строгом контроле");
+    scores.calafiore -= 1; reasons.calafiore.push("Ишемия >120 мин: Calafiore — высокая нагрузка Na при частом редозировании");
+    warnings.push("⚠️ Длительная ишемия: контролировать Hct, DO₂, температуру перфузата");
+  } else if (f.ischemiaTime > 80) {
+    scores.custodiol += 2; reasons.custodiol.push("Ишемия 80–120 мин: Кустодиол комфортен");
+    scores.delNido += 2; reasons.delNido.push("Ишемия 80–120 мин: DN — одна доза покрывает период");
+    scores.calafiore += 1; reasons.calafiore.push("Ишемия 80–120 мин: Calafiore — 2–3 редоза, управляемо");
+  } else {
+    scores.calafiore += 2; reasons.calafiore.push("Ишемия <80 мин: Calafiore — 1–2 редоза, оптимально");
+    scores.delNido += 2; reasons.delNido.push("Ишемия <80 мин: DN — одна доза достаточна");
+    scores.custodiol += 1; reasons.custodiol.push("Ишемия <80 мин: Кустодиол избыточен по объёму");
+  }
+
+  if (f.ar === "severe") {
+    scores.custodiol += 3; reasons.custodiol.push("АР 3–4 ст.: Кустодиол — ретроградная коронарная перфузия предпочтительна");
+    scores.delNido += 2; reasons.delNido.push("АР 3–4 ст.: DN — прямая канюляция коронарных устьев");
+    contraindications.calafiore.push("АР 3–4 ст.: антеградное введение неэффективно — вымывание в ЛЖ");
+    warnings.push("⚠️ Тяжёлая АР: антеградный путь не рекомендован — ретроградный или прямая канюляция");
+  } else if (f.ar === "moderate") {
+    scores.custodiol += 1; reasons.custodiol.push("АР 2 ст.: предпочтителен ретроградный путь");
+    scores.delNido += 1; reasons.delNido.push("АР 2 ст.: DN с осторожностью антеградно");
+    scores.calafiore += 1; reasons.calafiore.push("АР 2 ст.: Calafiore с ретроградным компонентом");
+  } else {
+    scores.calafiore += 1; reasons.calafiore.push("АР нет/1 ст.: антеградный путь надёжен");
+    scores.delNido += 1; reasons.delNido.push("АР нет/1 ст.: стандартное антеградное введение DN");
+    scores.custodiol += 1; reasons.custodiol.push("АР нет/1 ст.: Кустодиол антеградно без ограничений");
+  }
+
+  if (f.gfr < 30) {
+    scores.calafiore -= 2; contraindications.calafiore.push("СКФ <30: высокая нагрузка K+ при частых редозах — риск гиперкалиемии");
+    scores.custodiol += 1; reasons.custodiol.push("СКФ <30: Кустодиол — однократный болюс, меньшая суммарная нагрузка K+");
+    scores.delNido += 1; reasons.delNido.push("СКФ <30: DN — однократный болюс, контроль гиперкалиемии");
+    warnings.push("⚠️ ХБП 4–5 ст.: мониторинг K+ каждые 30 мин на ИК, готовность к ультрафильтрации");
+  } else if (f.gfr < 60) {
+    scores.calafiore -= 1; reasons.calafiore.push("СКФ 30–60: Calafiore — контроль K+ при редозировании");
+    warnings.push("⚠️ ХБП 3 ст.: контроль электролитов, избегать гиперкалиемии");
+  }
+
+  if (f.diabetes) {
+    scores.delNido += 1; reasons.delNido.push("СД: DN — нет глюкозы в составе");
+    scores.custodiol += 1; reasons.custodiol.push("СД: Кустодиол — гистидиновый буфер, нет глюкозы");
+    warnings.push("⚠️ СД: целевая гликемия 6–10 ммоль/л на ИК, инсулин по протоколу");
+  }
+  if (f.priorMI) {
+    scores.delNido += 2; reasons.delNido.push("Постинфарктный миокард: DN — лидокаин стабилизирует зону некроза/ишемии");
+    scores.calafiore += 1; reasons.calafiore.push("Постинфарктный миокард: Calafiore — непрерывная защита через редозы");
+    warnings.push("⚠️ Постинфарктный кардиосклероз: зона ишемии получает меньше кардиоплегии — рассмотреть комбинированный путь");
+  }
+  if (f.pediatric) {
+    scores.delNido += 4; reasons.delNido.push("Педиатрия: Del Nido — разработан специально для детской кардиохирургии");
+    contraindications.calafiore.push("Педиатрия: Calafiore не валидирован в педиатрии");
+    scores.custodiol += 1; reasons.custodiol.push("Педиатрия: Кустодиол применим, но DN предпочтителен");
+    warnings.push("⚠️ Педиатрия: дозировка Del Nido 20 мл/кг, max температура перфузата 4°C");
+  }
+
+  if (f.tempMode === "normothermia") {
+    scores.calafiore += 2; reasons.calafiore.push("Нормотермия: Calafiore — тёплые редозы каждые 15–20 мин");
+    scores.delNido -= 1; reasons.delNido.push("Нормотермия: DN — менее оптимален без гипотермической защиты");
+    contraindications.custodiol.push("Нормотермия: Кустодиол не предназначен для нормотермической защиты");
+  } else if (f.tempMode === "mild") {
+    scores.calafiore += 1; reasons.calafiore.push("Умеренная гипотермия (32–34°C): Calafiore — комфортно");
+    scores.delNido += 1; reasons.delNido.push("Умеренная гипотермия: DN — приемлемо");
+    scores.custodiol += 1; reasons.custodiol.push("Умеренная гипотермия: Кустодиол — субоптимально");
+  } else {
+    scores.custodiol += 2; reasons.custodiol.push("Глубокая гипотермия (<28°C): Кустодиол — максимальная защита");
+    scores.delNido += 1; reasons.delNido.push("Глубокая гипотермия: DN совместим");
+  }
+
+  Object.keys(scores).forEach(k => { if (scores[k] < 0) scores[k] = 0; });
+  const total = Object.values(scores).reduce((a, b) => a + b, 0) || 1;
+  const pct = {};
+  Object.keys(scores).forEach(k => { pct[k] = Math.round((scores[k] / total) * 100); });
+  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  return { scores, pct, reasons, warnings, contraindications, winner: sorted[0][0], sorted };
+}
+
+const PROTOCOLS = {
+  calafiore: {
+    label: "Calafiore (тёплая кровяная)", color: "#e05c2a", glow: "#e05c2a44", icon: "🩸",
+    composition: [
+      { name: "Основа", value: "Аутологичная кровь (4:1)" },
+      { name: "KCl", value: "20 мэкв/л (индукция), 8 мэкв/л (поддержание)" },
+      { name: "NaHCO₃", value: "по BE" },
+      { name: "Температура", value: "37°C или 29–32°C" },
+      { name: "Осмолярность", value: "~340 мОсм/кг" },
+    ],
+    dosing: [
+      { phase: "Индукция", dose: "10–15 мл/кг", pressure: "80–100 мм рт.ст." },
+      { phase: "Редозирование", dose: "5–10 мл/кг", interval: "каждые 20–25 мин" },
+      { phase: "Реперфузия", dose: "2–4 мл/кг", note: "тёплая, без K+" },
+    ],
+    advantages: ["Физиологичная оксигенация миокарда", "Гибкость дозирования", "Нет гемодилюции", "Хорошо при нормотермии"],
+    limitations: ["Частые редозы при длительных операциях", "Нагрузка K+ при ХБП", "Технически сложнее"],
+  },
+  delNido: {
+    label: "Del Nido", color: "#2a7fe0", glow: "#2a7fe044", icon: "💎",
+    composition: [
+      { name: "Плазмалит A", value: "1000 мл" },
+      { name: "Кровь", value: "250 мл (4:1)" },
+      { name: "MgSO₄", value: "2 г" },
+      { name: "Lidocaine", value: "130 мг" },
+      { name: "KCl", value: "2 мэкв" },
+      { name: "NaHCO₃", value: "13 мэкв" },
+      { name: "Mannitol", value: "3,26 г" },
+      { name: "Температура", value: "4–8°C" },
+    ],
+    dosing: [
+      { phase: "Единственная доза", dose: "20 мл/кг (max 1000 мл)", pressure: "200–250 мм рт.ст." },
+      { phase: "Редозирование (>90 мин)", dose: "10 мл/кг", note: "50% от первичной дозы" },
+    ],
+    advantages: ["Одна доза на 90–120 мин", "Лидокаин: стабилизация мембраны", "Магний: антагонист Ca²+", "Идеален при педиатрии и АВР"],
+    limitations: ["Ограниченный опыт >120 мин", "Не для нормотермии", "Объём 1000 мл"],
+  },
+  custodiol: {
+    label: "Кустодиол (HTK)", color: "#2ac47f", glow: "#2ac47f44", icon: "🧬",
+    composition: [
+      { name: "Гистидин (буфер)", value: "198 ммоль/л" },
+      { name: "Триптофан", value: "2 ммоль/л" },
+      { name: "Кетоглутарат", value: "1 ммоль/л" },
+      { name: "Mannitol", value: "30 ммоль/л" },
+      { name: "KCl", value: "9 мэкв/л" },
+      { name: "MgCl₂", value: "4 ммоль/л" },
+      { name: "Температура", value: "4–6°C" },
+    ],
+    dosing: [
+      { phase: "Взрослые", dose: "20–30 мл/кг (мин. 1000 мл)", pressure: "30–50 мм рт.ст.", note: "6–8 мин введения" },
+      { phase: "Повторная защита (>180 мин)", dose: "500–1000 мл" },
+    ],
+    advantages: ["Защита до 3–4 ч без редозов", "Идеален при аортальной хирургии", "Хорош при ретроградном введении"],
+    limitations: ["Большой объём → гемодилюция", "Не для нормотермии", "Нет O₂-доставки"],
+  },
+};
+
+function ScoreBar({ label, icon, pct, color, glow, active }) {
+  return (
+    <div style={{
+      padding: "14px 16px", borderRadius: 12, marginBottom: 10,
+      background: active ? `linear-gradient(135deg,${color}22,${color}11)` : "rgba(255,255,255,0.03)",
+      border: `1px solid ${active ? color+"88" : "rgba(255,255,255,0.08)"}`,
+      boxShadow: active ? `0 0 20px ${glow}` : "none",
+      transition: "all 0.4s",
+    }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+        <span style={{ color: active ? color : "rgba(255,255,255,0.6)", fontWeight: active ? 700 : 400, fontSize:13 }}>{icon} {label}</span>
+        <span style={{ color, fontWeight:700, fontSize:18 }}>{pct}%</span>
+      </div>
+      <div style={{ height:6, background:"rgba(255,255,255,0.08)", borderRadius:3, overflow:"hidden" }}>
+        <div style={{ width:`${pct}%`, height:"100%", borderRadius:3, background:`linear-gradient(90deg,${color}aa,${color})`, transition:"width 0.8s cubic-bezier(0.4,0,0.2,1)", boxShadow:`0 0 10px ${glow}` }} />
+      </div>
+    </div>
+  );
+}
+
+function RadarChart({ scores }) {
+  const axes = ["Операция","ФВ ЛЖ","ГЛЖ","Ишемия","АР","Почки"];
+  const n = axes.length, cx=120, cy=120, r=85;
+  const methods = [{key:"calafiore",color:"#e05c2a"},{key:"delNido",color:"#2a7fe0"},{key:"custodiol",color:"#2ac47f"}];
+  const total = Math.max(...Object.values(scores), 1);
+  const pt = (i, val) => { const a=(Math.PI*2*i)/n-Math.PI/2, ratio=val/total; return [cx+r*ratio*Math.cos(a), cy+r*ratio*Math.sin(a)]; };
+  const axPt = (i, ratio=1) => { const a=(Math.PI*2*i)/n-Math.PI/2; return [cx+r*ratio*Math.cos(a), cy+r*ratio*Math.sin(a)]; };
+  return (
+    <svg width={240} height={240} viewBox="0 0 240 240">
+      {[0.25,0.5,0.75,1].map(lvl => <polygon key={lvl} points={axes.map((_,i)=>axPt(i,lvl).join(",")).join(" ")} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={1}/>)}
+      {axes.map((_,i) => { const [x,y]=axPt(i); return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="rgba(255,255,255,0.12)" strokeWidth={1}/>; })}
+      {methods.map(m => <polygon key={m.key} points={axes.map((_,i)=>pt(i,scores[m.key]).join(",")).join(" ")} fill={m.color+"2a"} stroke={m.color} strokeWidth={2}/>)}
+      {axes.map((label,i) => { const [x,y]=axPt(i,1.2); return <text key={i} x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize={8} fill="rgba(255,255,255,0.5)">{label}</text>; })}
+    </svg>
+  );
+}
+
+function ProtocolModal({ method, onClose }) {
+  const p = PROTOCOLS[method];
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:"#0f1117", border:`1px solid ${p.color}44`, borderRadius:16, padding:20, maxWidth:500, width:"100%", maxHeight:"88vh", overflowY:"auto" }}>
+        <div style={{ fontSize:18, fontWeight:700, color:p.color, marginBottom:18 }}>{p.icon} {p.label}</div>
+        <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:8 }}>Состав</div>
+        {p.composition.map((c,i) => (
+          <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:"1px solid rgba(255,255,255,0.05)", fontSize:13 }}>
+            <span style={{ color:"rgba(255,255,255,0.45)" }}>{c.name}</span>
+            <span style={{ color:"#fff", fontWeight:500 }}>{c.value}</span>
+          </div>
+        ))}
+        <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", textTransform:"uppercase", letterSpacing:"0.1em", marginTop:16, marginBottom:8 }}>Дозирование</div>
+        {p.dosing.map((d,i) => (
+          <div key={i} style={{ padding:"10px 12px", marginBottom:8, borderRadius:8, background:`${p.color}11`, border:`1px solid ${p.color}33` }}>
+            <div style={{ color:p.color, fontWeight:600, fontSize:12, marginBottom:4 }}>{d.phase}</div>
+            {d.dose && <div style={{ fontSize:13, color:"#fff" }}>Доза: <b>{d.dose}</b></div>}
+            {d.pressure && <div style={{ fontSize:12, color:"rgba(255,255,255,0.55)" }}>Давление: {d.pressure}</div>}
+            {d.interval && <div style={{ fontSize:12, color:"rgba(255,255,255,0.55)" }}>Интервал: {d.interval}</div>}
+            {d.note && <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginTop:2 }}>{d.note}</div>}
+          </div>
+        ))}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:4 }}>
+          <div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:8 }}>✅ Преимущества</div>
+            {p.advantages.map((a,i) => <div key={i} style={{ fontSize:12, color:"rgba(255,255,255,0.65)", marginBottom:4 }}>• {a}</div>)}
+          </div>
+          <div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:8 }}>⚠️ Ограничения</div>
+            {p.limitations.map((l,i) => <div key={i} style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginBottom:4 }}>• {l}</div>)}
+          </div>
+        </div>
+        <button onClick={onClose} style={{ marginTop:18, width:"100%", padding:"10px", borderRadius:8, border:"none", background:`${p.color}33`, color:p.color, cursor:"pointer", fontWeight:600, fontSize:13 }}>Закрыть</button>
+      </div>
+    </div>
+  );
+}
+
+const labelStyle = { fontSize:11, color:"rgba(255,255,255,0.4)", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6, display:"block" };
+const selectStyle = { width:"100%", padding:"10px 14px", borderRadius:8, border:"1px solid rgba(255,255,255,0.12)", background:"rgba(255,255,255,0.06)", color:"#fff", fontSize:13, cursor:"pointer", outline:"none", appearance:"none" };
+const sectionStyle = { marginBottom:18, padding:16, borderRadius:12, background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)" };
+const sectionHead = { fontSize:10, color:"rgba(255,255,255,0.28)", textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:14 };
+
+export default function App() {
+  const [form, setForm] = useState({ opType:"cabg", ef:55, lvm:"none", ischemiaTime:60, ar:"none", gfr:75, diabetes:false, priorMI:false, pediatric:false, tempMode:"mild" });
+  const [tab, setTab] = useState("input");
+  const [detailMethod, setDetailMethod] = useState(null);
+  const [result, setResult] = useState(null);
+  const set = (k,v) => setForm(f => ({...f,[k]:v}));
+  const run = () => { setResult(calcScore(form)); setTab("result"); };
+
+  return (
+    <div style={{ minHeight:"100vh", background:"radial-gradient(ellipse 80% 60% at 50% 0%,#0d1f3c 0%,#080c14 60%,#060809 100%)", color:"#fff", fontFamily:"-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif" }}>
+      {detailMethod && <ProtocolModal method={detailMethod} onClose={()=>setDetailMethod(null)} />}
+
+      {/* Header */}
+      <div style={{ padding:"26px 20px 0", textAlign:"center" }}>
+        <div style={{ fontSize:9, letterSpacing:"0.32em", color:"rgba(255,255,255,0.28)", textTransform:"uppercase", marginBottom:7 }}>ОКБ №1 · Тюмень · Перфузиология</div>
+        <div style={{ fontSize:22, fontWeight:800, background:"linear-gradient(135deg,#e05c2a,#2a7fe0,#2ac47f)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>CardioProtect DSS v2</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:3 }}>Система поддержки выбора кардиоплегии</div>
+      </div>
+
+      {/* Protocol chips */}
+      <div style={{ display:"flex", gap:8, padding:"14px 20px", justifyContent:"center", flexWrap:"wrap" }}>
+        {Object.entries(PROTOCOLS).map(([k,p]) => (
+          <button key={k} onClick={()=>setDetailMethod(k)} style={{ padding:"6px 13px", borderRadius:20, border:`1px solid ${p.color}55`, background:`${p.color}18`, color:p.color, fontSize:11, cursor:"pointer", fontWeight:500 }}>
+            {p.icon} {k==="delNido"?"Del Nido":k==="calafiore"?"Calafiore":"Кустодиол"}
+          </button>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:"flex", margin:"0 20px 16px", borderRadius:10, background:"rgba(255,255,255,0.05)", padding:4 }}>
+        {[["input","⚙️ Параметры"],["result","📊 Результат"]].map(([t,label]) => (
+          <button key={t} onClick={()=>setTab(t)} style={{ flex:1, padding:"9px", borderRadius:8, border:"none", cursor:"pointer", fontSize:13, fontWeight:600, background:tab===t?"rgba(255,255,255,0.12)":"transparent", color:tab===t?"#fff":"rgba(255,255,255,0.38)", transition:"all 0.3s" }}>{label}</button>
+        ))}
+      </div>
+
+      <div style={{ padding:"0 20px 40px" }}>
+
+        {/* INPUT */}
+        {tab==="input" && (
+          <div>
+            <div style={sectionStyle}>
+              <div style={sectionHead}>Тип операции</div>
+              <select style={selectStyle} value={form.opType} onChange={e=>set("opType",e.target.value)}>
+                <option value="cabg">АКШ (изолированное)</option>
+                <option value="avr">Протезирование аортального клапана</option>
+                <option value="mvr">Пластика/протезирование митрального клапана</option>
+                <option value="combined">Сочетанная (АКШ + клапан)</option>
+                <option value="aorta">Хирургия аорты</option>
+                <option value="redo">Повторная операция (redo)</option>
+              </select>
+            </div>
+
+            <div style={sectionStyle}>
+              <div style={sectionHead}>Функция левого желудочка</div>
+              <label style={labelStyle}>ФВ ЛЖ: <span style={{ color:form.ef<30?"#e05c2a":form.ef<45?"#f0b429":"#2ac47f", fontWeight:700 }}>{form.ef}%</span></label>
+              <input type="range" min={10} max={75} value={form.ef} onChange={e=>set("ef",Number(e.target.value))} style={{ width:"100%", accentColor:form.ef<30?"#e05c2a":form.ef<45?"#f0b429":"#2ac47f", marginBottom:4 }}/>
+              <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"rgba(255,255,255,0.25)", marginBottom:14 }}><span>10%</span><span>45%</span><span>75%</span></div>
+              <label style={labelStyle}>Гипертрофия ЛЖ</label>
+              <select style={selectStyle} value={form.lvm} onChange={e=>set("lvm",e.target.value)}>
+                <option value="none">Нет / минимальная</option>
+                <option value="moderate">Умеренная (115–150 г/м²)</option>
+                <option value="severe">Выраженная (&gt;150 г/м²)</option>
+              </select>
+            </div>
+
+            <div style={sectionStyle}>
+              <div style={sectionHead}>Клапанная патология</div>
+              <label style={labelStyle}>Аортальная регургитация</label>
+              <select style={selectStyle} value={form.ar} onChange={e=>set("ar",e.target.value)}>
+                <option value="none">Нет / 1 ст.</option>
+                <option value="moderate">2 ст. (умеренная)</option>
+                <option value="severe">3–4 ст. (тяжёлая)</option>
+              </select>
+            </div>
+
+            <div style={sectionStyle}>
+              <div style={sectionHead}>Параметры перфузии</div>
+              <label style={labelStyle}>Ожидаемое время ишемии аорты: <span style={{ color:form.ischemiaTime>120?"#e05c2a":form.ischemiaTime>80?"#f0b429":"#2ac47f", fontWeight:700 }}>{form.ischemiaTime} мин</span></label>
+              <input type="range" min={20} max={240} step={5} value={form.ischemiaTime} onChange={e=>set("ischemiaTime",Number(e.target.value))} style={{ width:"100%", accentColor:form.ischemiaTime>120?"#e05c2a":form.ischemiaTime>80?"#f0b429":"#2ac47f", marginBottom:4 }}/>
+              <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"rgba(255,255,255,0.25)", marginBottom:14 }}><span>20</span><span>80</span><span>120</span><span>240 мин</span></div>
+              <label style={labelStyle}>Температурный режим ИК</label>
+              <select style={selectStyle} value={form.tempMode} onChange={e=>set("tempMode",e.target.value)}>
+                <option value="normothermia">Нормотермия (36–37°C)</option>
+                <option value="mild">Умеренная гипотермия (32–34°C)</option>
+                <option value="moderate">Гипотермия (28–32°C)</option>
+                <option value="deep">Глубокая гипотермия (&lt;28°C)</option>
+              </select>
+            </div>
+
+            <div style={sectionStyle}>
+              <div style={sectionHead}>Сопутствующая патология</div>
+              <label style={labelStyle}>СКФ: <span style={{ color:form.gfr<30?"#e05c2a":form.gfr<60?"#f0b429":"#2ac47f", fontWeight:700 }}>{form.gfr} мл/мин/1.73м²</span></label>
+              <input type="range" min={10} max={120} value={form.gfr} onChange={e=>set("gfr",Number(e.target.value))} style={{ width:"100%", accentColor:form.gfr<30?"#e05c2a":form.gfr<60?"#f0b429":"#2ac47f", marginBottom:4 }}/>
+              <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"rgba(255,255,255,0.25)", marginBottom:14 }}><span>ХБП 5</span><span>ХБП 3</span><span>Норма</span></div>
+              <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+                {[["diabetes","🍬 СД"],["priorMI","❤️‍🩹 Перенесённый ИМ"],["pediatric","👶 Педиатрия"]].map(([key,label]) => (
+                  <label key={key} style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer", fontSize:13, color:form[key]?"#fff":"rgba(255,255,255,0.45)", userSelect:"none" }}>
+                    <input type="checkbox" checked={form[key]} onChange={e=>set(key,e.target.checked)} style={{ accentColor:"#2a7fe0", width:16, height:16 }}/>
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={run} style={{ width:"100%", padding:"16px", borderRadius:12, border:"none", cursor:"pointer", background:"linear-gradient(135deg,#2a7fe0,#2ac47f)", color:"#fff", fontSize:15, fontWeight:700, letterSpacing:"0.04em", boxShadow:"0 4px 30px rgba(42,127,224,0.4)" }}>
+              ⚡ Рассчитать рекомендацию
+            </button>
+          </div>
+        )}
+
+        {/* RESULT */}
+        {tab==="result" && !result && (
+          <div style={{ textAlign:"center", padding:"60px 0", color:"rgba(255,255,255,0.25)" }}>
+            <div style={{ fontSize:48 }}>🫀</div>
+            <div style={{ fontSize:14, marginTop:12 }}>Введите параметры и нажмите «Рассчитать»</div>
+          </div>
+        )}
+
+        {tab==="result" && result && (
+          <div>
+            {/* Winner */}
+            <div style={{ padding:20, borderRadius:14, marginBottom:18, background:`linear-gradient(135deg,${PROTOCOLS[result.winner].color}22,${PROTOCOLS[result.winner].color}11)`, border:`1.5px solid ${PROTOCOLS[result.winner].color}66`, boxShadow:`0 0 40px ${PROTOCOLS[result.winner].glow}` }}>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", textTransform:"uppercase", letterSpacing:"0.15em", marginBottom:8 }}>Рекомендованный метод</div>
+              <div style={{ fontSize:21, fontWeight:800, color:PROTOCOLS[result.winner].color }}>{PROTOCOLS[result.winner].icon} {PROTOCOLS[result.winner].label}</div>
+              <div style={{ fontSize:13, color:"rgba(255,255,255,0.45)", marginTop:4 }}>Индекс предпочтения: {result.pct[result.winner]}% · {result.scores[result.winner]} баллов</div>
+              <button onClick={()=>setDetailMethod(result.winner)} style={{ marginTop:14, padding:"8px 16px", borderRadius:8, border:`1px solid ${PROTOCOLS[result.winner].color}66`, background:`${PROTOCOLS[result.winner].color}22`, color:PROTOCOLS[result.winner].color, fontSize:12, cursor:"pointer", fontWeight:600 }}>
+                Протокол дозирования →
+              </button>
+            </div>
+
+            {Object.entries(PROTOCOLS).map(([k,p]) => <ScoreBar key={k} label={p.label} icon={p.icon} pct={result.pct[k]} color={p.color} glow={p.glow} active={k===result.winner}/>)}
+
+            <div style={{ display:"flex", justifyContent:"center", margin:"16px 0", padding:12, borderRadius:14, background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)" }}>
+              <RadarChart scores={result.scores}/>
+            </div>
+
+            {result.warnings.length>0 && (
+              <div style={{ marginBottom:16, padding:16, borderRadius:12, background:"rgba(240,180,41,0.07)", border:"1px solid rgba(240,180,41,0.3)" }}>
+                <div style={{ fontSize:10, color:"#f0b429", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:10 }}>Клинические предупреждения</div>
+                {result.warnings.map((w,i) => <div key={i} style={{ fontSize:13, color:"rgba(255,255,255,0.7)", marginBottom:6 }}>{w}</div>)}
+              </div>
+            )}
+
+            {Object.entries(result.contraindications).some(([,v])=>v.length>0) && (
+              <div style={{ marginBottom:16, padding:16, borderRadius:12, background:"rgba(224,92,42,0.07)", border:"1px solid rgba(224,92,42,0.3)" }}>
+                <div style={{ fontSize:10, color:"#e05c2a", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:10 }}>Ограничения / Противопоказания</div>
+                {Object.entries(result.contraindications).map(([method,items]) => items.map((c,i) => (
+                  <div key={`${method}-${i}`} style={{ fontSize:13, color:"rgba(255,255,255,0.65)", marginBottom:6 }}>
+                    <span style={{ color:PROTOCOLS[method].color }}>{PROTOCOLS[method].icon}</span> {c}
+                  </div>
+                )))}
+              </div>
+            )}
+
+            <div style={{ borderRadius:12, overflow:"hidden", border:"1px solid rgba(255,255,255,0.07)", marginBottom:16 }}>
+              <div style={{ padding:"12px 16px", background:"rgba(255,255,255,0.04)", fontSize:10, color:"rgba(255,255,255,0.35)", textTransform:"uppercase", letterSpacing:"0.1em" }}>Обоснование по методам</div>
+              {Object.entries(PROTOCOLS).map(([k,p]) => (
+                <div key={k} style={{ borderTop:"1px solid rgba(255,255,255,0.05)", padding:"12px 16px" }}>
+                  <div style={{ color:p.color, fontWeight:600, fontSize:12, marginBottom:8 }}>{p.icon} {p.label} ({result.scores[k]} б.)</div>
+                  {result.reasons[k].map((r,i) => <div key={i} style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginBottom:4, paddingLeft:12, borderLeft:`2px solid ${p.color}44` }}>{r}</div>)}
+                </div>
+              ))}
+            </div>
+
+            <button onClick={()=>{setResult(null);setTab("input");}} style={{ width:"100%", padding:"12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.1)", background:"rgba(255,255,255,0.04)", color:"rgba(255,255,255,0.55)", fontSize:13, cursor:"pointer" }}>
+              ← Новый расчёт
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div style={{ textAlign:"center", padding:"0 20px 24px", fontSize:10, color:"rgba(255,255,255,0.18)" }}>
+        CardioProtect DSS v2 · Только для поддержки клинических решений · Не заменяет суждение перфузиолога
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>
